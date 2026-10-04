@@ -1,0 +1,29 @@
+stage('artifact') {
+    steps {
+        s3Upload(
+            profileName: 's3-profile',
+            entries: [[
+                bucket: 'YOUR_BUCKET_NAME',
+                selectedRegion: 'ap-south-1',
+                sourceFile: 'target/*.war',
+                flatten: true,
+                excludedFile: '',
+                storageClass: 'STANDARD',
+                noUploadOnFailure: true,
+                managedArtifacts: false,
+                gzipFiles: false,
+                showDirectlyInBrowser: false,
+                useServerSideEncryption: false,
+                keepForever: false,
+                uploadFromSlave: false,
+                uploadFromController: false,
+                bucketId: ''
+            ]],
+            userMetadata: [],
+            dontWaitForConcurrentBuildCompletion: false,
+            dontSetBuildResultOnFailure: false,
+            consoleLogLevel: 'INFO',
+            pluginFailureResultConstraint: 'FAILURE'
+        )
+    }
+}

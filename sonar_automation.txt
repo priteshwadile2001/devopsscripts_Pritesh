@@ -1,0 +1,83 @@
+#!/bin/bash
+# SonarQube install script for Amazon Linux 2023 (tested working)
+# Run as root:  sudo bash install-sonarqube-v2.sh
+# Needs: ~4 GB RAM (t3.medium or larger), port 9000 open in the security group
+set -euo pipefail
+
+SONAR_VERSION="26.9.0.129388"
+SONAR_ZIP="sonarqube-${SONAR_VERSION}.zip"
+SONAR_URL="https://binaries.sonarsource.com/Distribution/sonarqube/${SONAR_ZIP}"
+INSTALL_DIR="/opt"
+SONAR_HOME="${INSTALL_DIR}/sonarqube-${SONAR_VERSION}"
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Please run as root (sudo bash $0)"
+  exit 1
+fi
+
+echo "==> Installing dependencies (Java 21, unzip, wget)"
+dnf install -y java-21-amazon-corretto unzip wget
+
+JAVA_HOME_DIR="$(dirname "$(dirname "$(readlink -f "$(which java)")")")"
+echo "    JAVA_HOME detected: ${JAVA_HOME_DIR}"
+
+echo "==> Creating sonar user"
+id sonar &>/dev/null || useradd --system --create-home --shell /bin/bash sonar
+
+echo "==> Downloading and extracting SonarQube ${SONAR_VERSION}"
+cd "${INSTALL_DIR}"
+[ -f "${SONAR_ZIP}" ] || wget -q --show-progress "${SONAR_URL}"
+[ -d "${SONAR_HOME}" ] || unzip -q "${SONAR_ZIP}"
+ln -sfn "${SONAR_HOME}" "${INSTALL_DIR}/sonarqube"
+
+echo "==> Setting ownership and execute permission"
+chown -R sonar:sonar "${SONAR_HOME}"
+chmod +x "${SONAR_HOME}/bin/linux-x86-64/sonar.sh"
+
+echo "==> Setting kernel limits required by Elasticsearch"
+cat > /etc/sysctl.d/99-sonarqube.conf <<'EOF'
+vm.max_map_count=524288
+fs.file-max=131072
+EOF
+# Load only our file (avoids harmless warnings from other system files on EC2)
+sysctl -p /etc/sysctl.d/99-sonarqube.conf
+
+cat > /etc/security/limits.d/99-sonarqube.conf <<'EOF'
+sonar   -   nofile   131072
+sonar   -   nproc    8192
+EOF
+
+echo "==> Creating systemd service"
+cat > /etc/systemd/system/sonarqube.service <<EOF
+[Unit]
+Description=SonarQube service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=${INSTALL_DIR}/sonarqube/bin/linux-x86-64/sonar.sh console
+User=sonar
+Group=sonar
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=131072
+LimitNPROC=8192
+TimeoutStartSec=300
+Environment=JAVA_HOME=${JAVA_HOME_DIR}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl reset-failed sonarqube 2>/dev/null || true
+systemctl enable sonarqube
+systemctl restart sonarqube
+
+echo
+echo "==> Done. SonarQube takes 1-2 minutes to start."
+echo "    Check status : systemctl status sonarqube --no-pager"
+echo "    Health check : curl -s http://localhost:9000/api/system/status   (wait for \"status\":\"UP\")"
+echo "    Watch logs   : tail -f ${SONAR_HOME}/logs/sonar.log"
+echo "    Open         : http://<server-ip>:9000"
+echo "    Login        : admin / admin  (you will be asked to change the password)"

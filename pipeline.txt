@@ -1,0 +1,115 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('git') {
+            steps {
+                git 'https://github.com/priteshwadile2001/java-project-maven-new.git'
+            }
+        }
+
+        stage('compile') {
+            steps {
+                sh 'mvn compile'
+            }
+        }
+
+        stage('test') {
+            steps {
+                sh 'mvn test'
+            }
+        }
+
+        stage('build') {
+            steps {
+                sh 'mvn clean package'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+    steps {
+        withSonarQubeEnv('sonarqube') {
+            sh '''
+              mvn org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar \
+                -Dsonar.projectKey=my-app \
+                -Dsonar.projectName=my-app \
+                -Dsonar.host.url=$SONAR_HOST_URL \
+                -Dsonar.token=$SONAR_AUTH_TOKEN \
+                -Dsonar.exclusions="**/*.js,**/*.jsx,**/*.ts,**/*.tsx,**/*.css,**/*.scss,**/*.html,**/node_modules/**"
+            '''
+        }
+    }
+}
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+
+        stage('artifact') {
+            steps {
+                s3Upload(
+                    profileName: 'artifact',
+                    entries: [[
+                        bucket: 'pritesh-s3-artifact-bkt',
+                        selectedRegion: 'ap-south-1',
+                        sourceFile: '**/*.war',
+                        flatten: true,
+                        excludedFile: '',
+                        storageClass: 'STANDARD',
+                        noUploadOnFailure: true,
+                        managedArtifacts: false,
+                        gzipFiles: false,
+                        showDirectlyInBrowser: false,
+                        useServerSideEncryption: false,
+                        keepForever: false,
+                        uploadFromSlave: false,
+                        uploadFromController: false,
+                        bucketId: ''
+                    ]],
+                    userMetadata: [],
+                    dontWaitForConcurrentBuildCompletion: false,
+                    dontSetBuildResultOnFailure: false,
+                    consoleLogLevel: 'INFO',
+                    pluginFailureResultConstraint: 'FAILURE'
+                )
+            }
+        }
+        stage('nexus'){
+            steps{
+                script {
+                    def warFile = sh(script: 'ls target/*.war | head -n 1', returnStdout: true).trim()
+                    echo "Uploading ${warFile}"
+                    nexusArtifactUploader(
+                        nexusVersion: 'nexus3',
+                        protocol: 'http',
+                        nexusUrl: '3.110.189.207:8081',
+                        groupId: 'in.reyaz',
+                        version: '8.3.3-SNAPSHOT',
+                        repository: 'Hotstart',
+                        credentialsId: 'nexus',
+                        artifacts: [
+                            [artifactId: 'myapp',
+                             classifier: '',
+                             file: warFile,
+                             type: 'war']
+                        ]
+                    )
+                }
+            }
+        }
+        stage('Deploy'){
+            steps{
+                deploy adapters: [tomcat9(alternativeDeploymentContext: '', credentialsId: 'tomcatcred', path: '', url: 'http://15.206.194.55:8080/')], contextPath: null, war: 'target/*.war'
+            }
+        }
+        stage('DskipTests'){
+            steps{
+                   sh 'mvn clean package -DskipTests'
+            }
+        }
+    }
+}

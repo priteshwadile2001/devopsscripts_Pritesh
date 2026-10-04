@@ -1,0 +1,25 @@
+1. Install Java
+
+Tomcat 10.1 needs Java 11+, and Java 21 (which you already have for Jenkins) works fine:
+
+bash
+sudo dnf install -y java-21-amazon-corretto
+java -version
+
+
+2. wget https://downloads01-he-fi.apache.org/tomcat/tomcat-10/v10.1.60/bin/apache-tomcat-10.1.60.tar.gz
+tar -xzvf apache-tomcat-10.1.60.tar.gz
+
+
+3.add user
+cat /apache-tomcat-10.1.60/conf/tomcat-users.xml
+ <role rolename="manager-gui"/>
+          <role rolename="manager-script"/>
+          <user username="tomcat" password="root12345" roles="manager-gui,manager-script"/>
+
+4.apache-tomcat-10.1.60/webapps/manager/META-INF/context.xml
+delele line 21,22
+
+5.start tomcat
+cd /apache-tomcat-10.1.60/bin/
+sh startup.sh

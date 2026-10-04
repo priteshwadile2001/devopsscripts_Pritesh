@@ -1,0 +1,117 @@
+1.sudo dnf install -y java-21-amazon-corretto
+2.cd /opt
+wget https://download.sonatype.com/nexus/3/nexus-3.96.4-01-linux-x86_64.tar.gz
+3.tar -zxvf nexus-3.96.4-01-linux-x86_64.tar.gz
+
+4.mv /opt/nexus-3.96.4-01 /opt/nexus
+
+5. sudo adduser nexus
+6.passwd nexus
+7.sudo visudo 
+add the line
+nexus ALL=(ALL) NOPASSWD: ALL -- Giving full permission to nexus user
+
+8.sudo chown -R nexus:nexus /opt/nexus
+9.sudo chown -R nexus:nexus /opt/sonatype-work/
+10.cd /opt/nexus/bin/
+11. echo 'run_as_user="nexus"' > /opt/nexus/bin/nexus.rc
+
+
+This file doesn't control CPU. It only sets memory for the Java process, and Nexus uses whatever CPU cores the instance has. The only way to get more CPU is a bigger instance type. If your goal is to make Nexus faster or stop it crashing, raise the memory with the first three lines.
+
+12. vi nexus.vmoptions
+
+-Xms1024m
+-Xmx1024m
+-XX:MaxDirectMemorySize=1024m
+
+-XX:LogFile=./sonatype-work/nexus3/log/jvm.log
+-XX:-OmitStackTraceInFastThrow
+-Djava.net.preferIPv4Stack=true
+-Dkaraf.home=.
+-Dkaraf.base=.
+-Dkaraf.etc=etc/karaf
+-Djava.util.logging.config.file=/etc/karaf/java.util.logging.properties
+-Dkaraf.data=./sonatype-work/nexus3
+-Dkkaraf.log=./sonatype-work/nexus3/log
+-Djava.io.tmpdir=./sonatype-work/nexus3/tmp
+
+
+13.sudo vi /etc/systemd/system/nexus.service
+
+[Unit]
+Description=Nexus Service
+After=network.target
+
+[Service]
+Type=forking
+LimitNOFILE=65536
+ExecStart=/opt/nexus/bin/nexus start
+ExecStop=/opt/nexus/bin/nexus stop
+User=nexus
+Restart=on-abort
+
+[Install]
+WantedBy=multi-user.target
+
+
+cat > /opt/nexus/bin/nexus.vmoptions <<'EOF'
+-Xms2048m
+-Xmx2048m
+-XX:MaxDirectMemorySize=1024m
+-XX:+UnlockDiagnosticVMOptions
+-XX:+LogVMOutput
+-XX:LogFile=../sonatype-work/nexus3/log/jvm.log
+-XX:-OmitStackTraceInFastThrow
+-Djava.net.preferIPv4Stack=true
+-Dkaraf.home=.
+-Dkaraf.base=.
+-Dkaraf.etc=etc/karaf
+-Djava.util.logging.config.file=etc/karaf/java.util.logging.properties
+-Dkaraf.data=../sonatype-work/nexus3
+-Dkaraf.log=../sonatype-work/nexus3/log
+-Djava.io.tmpdir=../sonatype-work/nexus3/tmp
+--add-reads=java.xml=java.logging
+--add-opens
+java.base/java.security=ALL-UNNAMED
+--add-opens
+java.base/java.net=ALL-UNNAMED
+--add-opens
+java.base/java.lang=ALL-UNNAMED
+--add-opens
+java.base/java.util=ALL-UNNAMED
+--add-opens
+java.naming/javax.naming.spi=ALL-UNNAMED
+--add-opens
+java.rmi/sun.rmi.transport.tcp=ALL-UNNAMED
+--add-exports=java.base/sun.net.www.protocol.http=ALL-UNNAMED
+--add-exports=java.base/sun.net.www.protocol.https=ALL-UNNAMED
+--add-exports=java.base/sun.net.www.protocol.jar=ALL-UNNAMED
+--add-exports=jdk.xml.dom/org.w3c.dom.html=ALL-UNNAMED
+--add-exports=jdk.naming.rmi/com.sun.jndi.url.rmi=ALL-UNNAMED
+--add-exports=java.security.sasl/com.sun.security.sasl=ALL-UNNAMED
+--add-exports=java.base/sun.security.x509=ALL-UNNAMED
+--add-exports=java.base/sun.security.rsa=ALL-UNNAMED
+--add-exports=java.base/sun.security.pkcs=ALL-UNNAMED
+EOF
+chown nexus:nexus /opt/nexus/bin/nexus.vmoptions
+
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now nexus
+sudo systemctl status nexus
+
+
+port not sg 8081
+
+cd /opt/sonatype-work/nexus3/
+vi admin.password
+a3e31907-3a99-477c-aa3f-78dc64885436
+
+login
+public_ip:8081
+admin 
+a3e31907-3a99-477c-aa3f-78dc64885436
+
+Enable anonymous access
+
